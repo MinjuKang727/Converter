@@ -8,7 +8,7 @@ from moviepy import VideoFileClip
 class VideoToGifApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python Video to GIF Converter - GitHub Safe")
+        self.root.title("Convert2GIF(비디오 GIF 변환기)")
         self.root.geometry("540x760")
         self.root.resizable(False, False)
         
@@ -43,7 +43,7 @@ class VideoToGifApp:
         self.platform_combo.bind("<<ComboboxSelected>>", lambda e: self.update_smart_optimizer())
 
         tk.Label(setting_frame, text="가로 해상도 (너비):", font=("맑은 고딕", 9)).grid(row=1, column=0, sticky="w", pady=5)
-        self.res_combo = ttk.Combobox(setting_frame, values=["원본 유지", "640px(고화질)", "480px", "320px", "240px (초소형)"], state="readonly", width=24)
+        self.res_combo = ttk.Combobox(setting_frame, values=["원본 유지", "640px(고화질)", "480px(일반/표준)", "320px(저화질)", "240px (초소형)"], state="readonly", width=24)
         self.res_combo.current(2) # 기본 480px 추천
         self.res_combo.grid(row=1, column=1, sticky="w", pady=5)
         self.res_combo.bind("<<ComboboxSelected>>", lambda e: self.update_smart_optimizer())
@@ -212,10 +212,10 @@ class VideoToGifApp:
             platform = self.platform_combo.get()
             res_option = self.res_combo.get()
 
-            # 🛠️ 해상도 적용 및 깃허브 업로드 방어 로직
+            # 해상도 적용
             if "원본" in res_option:
                 if "깃허브" in platform and clip.w > 480:
-                    clip = clip.resized(width=480) # 깃허브 10MB 방어를 위해 원본이 커도 480px로 안전 조절
+                    clip = clip.resized(width=480)
                 elif "디스코드" in platform and clip.w > 320:
                     clip = clip.resized(width=320)
             else:
@@ -242,14 +242,50 @@ class VideoToGifApp:
             clip.write_gif(save_path, fps=fps)
             clip.close()
 
-            # 📏 변환 완료 후 파일 용량 체크
+            # 📏 변환 완료 후 파일 용량 체크 및 맞춤형 안내 알림창 생성
             file_size_mb = os.path.getsize(save_path) / (1024 * 1024)
 
             self.progress_bar['value'] = 100
             self.status_label.config(text=f"변환 완료! ({file_size_mb:.2f} MB)", fg="green")
             
-            if "깃허브" in platform and file_size_mb > 10:
-                messagebox.showwarning("용량 경고", f"생성된 GIF 크기가 {file_size_mb:.2f}MB입니다.\n깃허브 제한(10MB)을 초과하므로 구간을 더 짧게(3~5초) 줄여주세요!")
+            # 플랫폼별 용량 제한 기준 정의 (MB)
+            limit_mb = 10.0
+            platform_name = "깃허브"
+            if "디스코드" in platform:
+                limit_mb = 8.0
+                platform_name = "디스코드"
+            elif "네이버" in platform:
+                limit_mb = 20.0
+                platform_name = "네이버 블로그/카페"
+
+            if ("깃허브" in platform or "디스코드" in platform or "네이버" in platform) and file_size_mb > limit_mb:
+                # 추천 대안 수치 계산
+                current_duration = max(0.1, end_trim - start_trim)
+                # 현재 초과 비율을 반영하여 안전한 최대 FPS 계산
+                safe_fps = max(3, int(fps * (limit_mb / file_size_mb) * 0.9))
+                
+                # 구간 길이를 줄인다면 어느 정도로 줄여야 하는지 계산 (예: 제한 용량 비율만큼)
+                suggested_duration = max(1.0, current_duration * (limit_mb / file_size_mb) * 0.9)
+                suggested_end = start_trim + suggested_duration
+
+                # 대안 해상도 추천 (현재 픽셀 너비 기준 한 단계 낮춘 너비 제안)
+                current_width = clip.w
+                if current_width > 480:
+                    suggested_res = "480px"
+                elif current_width > 320:
+                    suggested_res = "320px"
+                else:
+                    suggested_res = "240px"
+
+                warning_msg = (
+                    f"생성된 파일 크기: {file_size_mb:.2f}MB\n"
+                    f"{platform_name} 제한 용량({limit_mb}MB)을 초과합니다.\n\n"
+                    f"파일 크기 축소를 위한 방법(택1):\n"
+                    f"1. 구간 길이를 {start_trim:.1f}초 ~ {suggested_end:.1f}초로 줄이기\n"
+                    f"2. 해상도를 {suggested_res}로 낮추기\n"
+                    f"3. FPS를 {safe_fps} 이하로 낮추기"
+                )
+                messagebox.showwarning("용량 초과 경고", warning_msg)
             else:
                 messagebox.showinfo("성공", f"GIF 변환 완료! (용량: {file_size_mb:.2f} MB)\n저장 경로: {save_path}")
 
